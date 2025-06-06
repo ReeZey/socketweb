@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<script>
+    const ws = new WebSocket("ws://" + location.host + "/ws");
+
+    console.log("ws://" + location.host + "/ws");
+
+    let path = location.pathname;
+    console.log("URL: ", path);
+
+    window.addEventListener('popstate', (event) => {
+        document.location = document.location;
+    });
+
+    ws.addEventListener("open", (event) => {
+        ws.send(JSON.stringify({
+            "type": "lookup",
+            "path": path
+        }));
+    });
+
+    ws.addEventListener("message", async (event) => {
+        let array = new DataView(await event.data.arrayBuffer());
+
+        let json_header_len = array.getUint32(0, false);
+
+        let json_header = JSON.parse(new TextDecoder().decode(
+            new Uint8Array(await event.data.slice(4, 4 + json_header_len).arrayBuffer())
+        ));
+
+        if(json_header.error != null){
+            console.error("Server Error:", json_header.error);
+            return;
+        }
+        let data_len = array.getUint32(4 + json_header_len, false);
+        let data = new Uint8Array(await event.data.slice(4 + json_header_len + 4).arrayBuffer());
+
+        if(data.length != data_len){
+            console.error("Data length mismatch: expected", data_len, "but got", data.length);
+            return;
+        }
+
+
+        if(json_header.mime.includes("image")) {
+            let blob = new Blob([data], { type: json_header.mime });
+
+            const blobUrl = URL.createObjectURL(blob);
+
+            let element = document.querySelector("#" + json_header.elem);
+
+            if(element == null) {
+                element = document.createElement("img");
+                document.body.innerHTML = "";
+                document.body.appendChild(element);
+            } else {
+                element.removeAttribute("id");
+            }
+
+            element.src = blobUrl;
+            return;
+        }
+
+        if(json_header.mime == "text/html") {
+            let html = new TextDecoder().decode(data);
+            document.querySelector("html").innerHTML = html;
+
+            const images = document.querySelectorAll('img');
+            images.forEach((img) => {
+                img.addEventListener('error', () => {
+                    img.id = "error_" + Math.random().toString(36).substring(2, 15);
+                    ws.send(JSON.stringify({
+                        "type": "lookup",
+                        "elem": img.id,
+                        "path": img.src.replace(location.href, "/")
+                    }));
+                }, { once: true });
+            });
+
+            const buttons = document.querySelectorAll('a');
+            buttons.forEach((button) => {
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+
+                    path = button.getAttribute('href');
+                    if(path.startsWith("/")) {
+                        path = path.replace(location.origin, "");
+                    }
+                    ws.send(JSON.stringify({
+                        "type": "lookup",
+                        "path": path,
+                    }));
+
+                    window.history.pushState(path, document.title, path);
+                });
+            });
+        }
+        
+    });
+
+
+    
+</script>

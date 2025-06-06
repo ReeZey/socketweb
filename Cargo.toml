@@ -1,0 +1,14 @@
+[package]
+name = "socketweb"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["macros", "fs", "rt-multi-thread"] }
+actix-web = { version = "4" }
+actix-files = { version = "0.6" }
+actix-ws = { version = "0.3" }
+futures-util = { version = "0.3" }
+serde_json = { version = "1" }
+byte-order = { version = "0.3" }
+mimetype = { version = "0.1" }
