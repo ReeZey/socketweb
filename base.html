@@ -2,21 +2,35 @@
 <script>
     const ws = new WebSocket("ws://" + location.host + "/ws");
 
-    console.log("ws://" + location.host + "/ws");
-
     let path = location.pathname;
-    console.log("URL: ", path);
-
     window.addEventListener('popstate', (event) => {
         document.location = document.location;
     });
 
     ws.addEventListener("open", (event) => {
+        window.addEventListener("error", (event) => {
+            console.log("Loading Resource:", event.target, event);
+            let elem = event.target;
+
+            let src = elem.src || elem.href;
+
+            elem.id = "error_" + Math.random().toString(36).substring(2, 15);
+            ws.send(JSON.stringify({
+                "type": "lookup",
+                "elem": elem.id,
+                "path": src.replace(location.href, "/")
+            }));
+
+            event.preventDefault();
+        }, true);
+        
         ws.send(JSON.stringify({
             "type": "lookup",
             "path": path
         }));
     });
+
+    
 
     ws.addEventListener("message", async (event) => {
         let array = new DataView(await event.data.arrayBuffer());
@@ -39,14 +53,12 @@
             return;
         }
 
-
         if(json_header.mime.includes("image")) {
             let blob = new Blob([data], { type: json_header.mime });
 
             const blobUrl = URL.createObjectURL(blob);
 
             let element = document.querySelector("#" + json_header.elem);
-
             if(element == null) {
                 element = document.createElement("img");
                 document.body.innerHTML = "";
@@ -54,26 +66,63 @@
             } else {
                 element.removeAttribute("id");
             }
-
             element.src = blobUrl;
+            return;
+        }
+        
+        if(json_header.mime == "text/css") {
+            let blob = new Blob([data], { type: json_header.mime });
+
+            const blobUrl = URL.createObjectURL(blob);
+
+            let element = document.querySelector("#" + json_header.elem);
+            if(element == null) {
+                element = document.createElement("pre");
+                element.innerHTML = new TextDecoder().decode(data);
+                document.body.appendChild(element);
+            } else {
+                element.removeAttribute("id");
+                element.href = blobUrl;
+            }
+            return;
+        }
+
+        if (json_header.mime == "application/javascript") {
+
+            let encoder = new TextEncoder();
+
+            let prefix = encoder.encode("(async () => {"), 
+                suffix = encoder.encode("})();");
+                
+            
+            let wrapped_data = new Uint8Array(
+                prefix.length + data.length + suffix.length
+            );
+            wrapped_data.set(prefix, 0);
+            wrapped_data.set(data, prefix.length);
+            wrapped_data.set(suffix, prefix.length + data.length);
+
+            let blob = new Blob([wrapped_data], { type: json_header.mime });
+
+            const blobUrl = URL.createObjectURL(blob);
+
+            let element = document.querySelector("#" + json_header.elem);
+            if(element == null) {
+                element = document.createElement("pre");
+                element.innerHTML = new TextDecoder().decode(data);
+            } else {
+                element.remove();
+                element = document.createElement("script");
+                element.src = blobUrl;
+            }
+            
+            document.body.appendChild(element);
             return;
         }
 
         if(json_header.mime == "text/html") {
             let html = new TextDecoder().decode(data);
             document.querySelector("html").innerHTML = html;
-
-            const images = document.querySelectorAll('img');
-            images.forEach((img) => {
-                img.addEventListener('error', () => {
-                    img.id = "error_" + Math.random().toString(36).substring(2, 15);
-                    ws.send(JSON.stringify({
-                        "type": "lookup",
-                        "elem": img.id,
-                        "path": img.src.replace(location.href, "/")
-                    }));
-                }, { once: true });
-            });
 
             const buttons = document.querySelectorAll('a');
             buttons.forEach((button) => {
@@ -92,6 +141,19 @@
                     window.history.pushState(path, document.title, path);
                 });
             });
+
+            
+            const scripts = document.querySelectorAll('script');
+            scripts.forEach((script) => {
+                script.id = "error_" + Math.random().toString(36).substring(2, 15);
+                ws.send(JSON.stringify({
+                    "type": "lookup",
+                    "elem": script.id,
+                    "path": script.src.replace(location.href, "/")
+                }));
+            });
+
+            return;
         }
         
     });

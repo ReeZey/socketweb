@@ -23,6 +23,7 @@ pub async fn connection(req: HttpRequest, body: web::Payload) -> actix_web::Resu
                         Value::String(str) => {
                             match str.as_str() {
                                 "lookup" => {
+                                    println!();
                                     let mut file_name = request["path"].as_str().unwrap().to_string();
 
                                     if !file_name.starts_with("/") {
@@ -41,14 +42,23 @@ pub async fn connection(req: HttpRequest, body: web::Payload) -> actix_web::Resu
                                             println!("File found: {}", path.display());
                                             let file_read = tokio::fs::read(&path).await.unwrap();
 
-                                            let mime_type = mimetype::detect(&file_read);
+                                            let mut mime_type = mimetype::detect(&file_read).mime;
 
-                                            println!("Detected MIME type: {}", mime_type.mime);
-
+                                            
+                                            if file_name.ends_with(".css") {
+                                                mime_type = "text/css".to_string();
+                                            } else if file_name.ends_with(".js") {
+                                                mime_type = "application/javascript".to_string();
+                                            } else if file_name.ends_with(".html") {
+                                                mime_type = "text/html".to_string();
+                                            }
+                                            
+                                            println!("Detected MIME type: {}", mime_type);
+                                            
                                             let mut json = serde_json::json!({
                                                 "type": "lookup",
                                                 "path": path,
-                                                "mime": mime_type.mime,
+                                                "mime": mime_type,
                                             });
 
                                             if let Some(elem) = request.get("elem") {
